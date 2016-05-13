@@ -1,19 +1,13 @@
-from couchpotato import get_session
-from couchpotato.core.event import addEvent, fireEvent
-from couchpotato.core.helpers.encoding import toUnicode, sp
-from couchpotato.core.helpers.variable import splitString
+from couchpotato.core.event import addEvent
 from couchpotato.core.logger import CPLog
 from couchpotato.core.plugins.base import Plugin
-from couchpotato.core.settings.model import Library, FileType
-from couchpotato.environment import Env
-from subprocess import call, Popen, PIPE
-import os
 import traceback
+import os
+import subprocess
 
 log = CPLog(__name__)
 
-
-# Edit to point to the absolute path where the CPProcess.py script resides
+# Edit to point to the absolute path where the rest of the script resides
 path = "C:\\Scripts\\"
 
 
@@ -22,30 +16,35 @@ class PostProcess(Plugin):
     def __init__(self):
         addEvent('renamer.after', self.callscript)
 
-    
-    def callscript(self, message = None, group = None):
-        imdbid = group['library']['identifier']
-        moviefile = group['renamed_files']
-        original = group['files']['movie'][0]
-        
-        command = ['python']
-        command.append(os.path.join(path, 'CPProcess.py'))
-        command.append(imdbid)
-        command.append(original)
-        for x in moviefile:
-            command.append(x)
+    def callscript(self, message=None, group=None):
+
+        log.info('MP4 Automator - Post processing script initialized')
+        exec_me = os.path.join(path, "postCouchPotato.py")
 
         try:
-            p = Popen(command, stdout=PIPE)
-            res = p.wait()
-            if res == 0:
-                log.info('PostProcess Script was called successfully')
-                return True
-            else:
-                log.info('PostProcess Script returned an error code: %s', str(res))
-
+            imdbid = group['library']['identifier']
         except:
-            log.error('Failed to call script: %s', (traceback.format_exc()))
+            imdbid = group['identifier']
 
+        moviefile = group['renamed_files']
+        original = group['files']['movie'][0]
 
-        return False
+        success = True
+
+        for inputfile in moviefile:
+            try:
+                log.info("Executing post processing on file %s with IMDB ID %s" % (inputfile, imdbid))
+                if os.name == 'nt':
+                    process = subprocess.Popen([exec_me, imdbid, inputfile, original], shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                else:
+                    process = subprocess.Popen([exec_me, imdbid, inputfile, original], shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={})
+                output, errors = process.communicate()
+                log.info(output)
+                log.info(errors)
+                log.info("Return code: %s" % process.returncode)
+            except:
+                log.error("Failed to execute post processing on file %s" % inputfile)
+                log.error(traceback.format_exc())
+                success = False
+
+        return success
